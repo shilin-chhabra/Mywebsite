@@ -1,0 +1,221 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ----------
+// Auth Models (NextAuth compatible)
+// ----------
+
+model User {
+  id              String   @id @default(cuid())
+  name            String?
+  email           String?  @unique
+  emailVerified   DateTime?
+  image           String?
+  hashedPassword  String?
+  role            UserRole @default(ATHLETE)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+
+  // Domain relations
+  athleteProfile  AthleteProfile?
+  verifiedStats   Stat[]       @relation("VerifiedByUser")
+  verifiedMedia   Recording[]  @relation("RecordingVerifiedByUser")
+  academies       Academy[]    @relation("AcademyCreatedByUser")
+  applications    Application[] @relation("ApplicationAthleteUser")
+}
+
+enum UserRole {
+  ATHLETE
+  ACADEMY_ADMIN
+  VERIFIER
+  ADMIN
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ----------
+// Domain Models
+// ----------
+
+model AthleteProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  sport           String?
+  positions       Json?
+  bio             String?
+  heightCm        Int?
+  weightKg        Int?
+  graduationYear  Int?
+  location        String?
+  primaryEmail    String?
+  phone           String?
+  websiteUrl      String?
+  instagramUrl    String?
+  youtubeUrl      String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stats       Stat[]
+  recordings  Recording[]
+}
+
+model Stat {
+  id             String            @id @default(cuid())
+  profileId      String
+  category       String
+  name           String
+  valueNumber    Float?
+  valueString    String?
+  unit           String?
+  notes          String?
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedAt     DateTime?
+  verifiedByUserId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  profile  AthleteProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  verifiedBy User?        @relation("VerifiedByUser", fields: [verifiedByUserId], references: [id])
+
+  @@index([profileId])
+  @@index([verificationStatus])
+}
+
+model Recording {
+  id               String   @id @default(cuid())
+  profileId        String
+  title            String
+  url              String
+  thumbnailUrl     String?
+  durationSeconds  Int?
+  description      String?
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedAt       DateTime?
+  verifiedByUserId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  profile    AthleteProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  verifiedBy User?          @relation("RecordingVerifiedByUser", fields: [verifiedByUserId], references: [id])
+
+  @@index([profileId])
+  @@index([verificationStatus])
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model Academy {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  website         String?
+  location        String?
+  contactEmail    String?
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  createdBy User      @relation("AcademyCreatedByUser", fields: [createdByUserId], references: [id])
+  programs  Program[]
+
+  @@unique([name])
+}
+
+model Program {
+  id          String   @id @default(cuid())
+  academyId   String
+  name        String
+  sport       String
+  seasonStart DateTime?
+  seasonEnd   DateTime?
+  description String?
+  requirements String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  academy     Academy  @relation(fields: [academyId], references: [id], onDelete: Cascade)
+  applications Application[]
+
+  @@index([academyId])
+}
+
+model Application {
+  id             String      @id @default(cuid())
+  athleteUserId  String
+  programId      String
+  status         ApplicationStatus @default(DRAFT)
+  submittedAt    DateTime?
+  withdrawn      Boolean @default(false)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  athlete User    @relation("ApplicationAthleteUser", fields: [athleteUserId], references: [id])
+  program Program @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@index([athleteUserId])
+  @@index([programId])
+  @@index([status])
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  ACCEPTED
+  REJECTED
+}
